@@ -9,7 +9,7 @@ const jwt = require("jsonwebtoken");
 // Middleware
 app.use(
   cors({
-    origin: ["http://localhost:5173"], 
+    origin: ["http://localhost:5173"],
     credentials: true,
   })
 );
@@ -55,7 +55,7 @@ async function run() {
     const districtCollection = client.db("GeocodeDB").collection("Districts");
     const upazilaCollection = client.db("GeocodeDB").collection("Upazilas");
     const UsersCollection = client.db("UserDB").collection("Users");
- 
+
     // Route: Upload all upazila data
     app.post("/upload-upazilas", async (req, res) => {
       try {
@@ -125,86 +125,86 @@ async function run() {
     });
 
     //Upload user to Database
-   app.post("/api/register", async (req, res) => {
-  try {
-    const {
-      name,
-      email,
-      phone,
-      passwordHash, // frontend sends plain password in "passwordHash"
-      avatarUrl,
-      roles,
-      bloodGroup,
-      status,
-      ratingAvg,
-      ratingCount,
-      address, // contains district & upazila
-      createdAt,
-    } = req.body;
+    app.post("/api/register", async (req, res) => {
+      try {
+        const {
+          name,
+          email,
+          phone,
+          passwordHash, // frontend sends plain password in "passwordHash"
+          avatarUrl,
+          roles,
+          bloodGroup,
+          status,
+          ratingAvg,
+          ratingCount,
+          address, // contains district & upazila
+          createdAt,
+        } = req.body;
 
-    // Check if user already exists
-    const existingUser = await UsersCollection.findOne({ email });
-    if (existingUser) {
-      return res.status(409).json({ message: "User already exists" });
-    }
+        // Check if user already exists
+        const existingUser = await UsersCollection.findOne({ email });
+        if (existingUser) {
+          return res.status(409).json({ message: "User already exists" });
+        }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(passwordHash, 10);
+        // Hash password
+        const hashedPassword = await bcrypt.hash(passwordHash, 10);
 
-    // Create new user
-    const newUser = {
-      name,
-      email,
-      phone,
-      password: hashedPassword,
-      avatar: avatarUrl,
-      roles: roles || ["user"],
-      bloodGroup,
-      status: status || "active",
-      ratingAvg: ratingAvg || 0,
-      ratingCount: ratingCount || 0,
-      address: {
-        district: address?.district || "",
-        upazila: address?.upazila || "",
-      },
-      createdAt: createdAt ? new Date(createdAt) : new Date(),
-    };
+        // Create new user
+        const newUser = {
+          name,
+          email,
+          phone,
+          password: hashedPassword,
+          avatar: avatarUrl,
+          roles: roles || ["user"],
+          bloodGroup,
+          status: status || "active",
+          ratingAvg: ratingAvg || 0,
+          ratingCount: ratingCount || 0,
+          address: {
+            district: address?.district || "",
+            upazila: address?.upazila || "",
+          },
+          createdAt: createdAt ? new Date(createdAt) : new Date(),
+        };
 
-    // Insert into database
-    const result = await UsersCollection.insertOne(newUser);
+        // Insert into database
+        const result = await UsersCollection.insertOne(newUser);
 
-    // Generate JWT
-    const token = jwt.sign({ email }, process.env.JWT_SECRET, {
-      expiresIn: "7d",
+        // Generate JWT
+        const token = jwt.sign({ email }, process.env.JWT_SECRET, {
+          expiresIn: "7d",
+        });
+
+        // Set cookie
+        res.cookie("token", token, {
+          httpOnly: true,
+          secure: true, // required for cross-site cookies
+          sameSite: "none", // required for cross-site cookies
+          maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        });
+
+        res.status(201).json({
+          message: "Registration successful",
+          userId: result.insertedId,
+        });
+      } catch (error) {
+        console.error("Registration Error:", error);
+        res.status(500).json({
+          message: "Registration failed",
+          error: error.message,
+        });
+      }
     });
-
-    // Set cookie
-    res.cookie("token", token, {
-      httpOnly: true,
-      secure: true, // required for cross-site cookies
-      sameSite: "none", // required for cross-site cookies
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    });
-
-    res.status(201).json({
-      message: "Registration successful",
-      userId: result.insertedId,
-    });
-  } catch (error) {
-    console.error("Registration Error:", error);
-    res.status(500).json({
-      message: "Registration failed",
-      error: error.message,
-    });
-  }
-});
 
     //user login
     app.post("/api/login", async (req, res) => {
       try {
         const { email, password } = req.body;
 
-        const user = await Users.findOne({ email });
+        const user = await UsersCollection.findOne({ email });
         if (!user) return res.status(404).json({ message: "User not found" });
 
         const isMatch = await bcrypt.compare(password, user.password);
@@ -245,13 +245,66 @@ async function run() {
         if (!token) return res.status(401).json({ message: "Unauthorized" });
 
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const user = await Users.findOne({ email: decoded.email });
+        const user = await UsersCollection.findOne({ email: decoded.email });
 
         if (!user) return res.status(404).json({ message: "User not found" });
 
         res.status(200).json({ user });
       } catch (err) {
         res.status(401).json({ message: "Unauthorized", error: err.message });
+      }
+    });
+
+    // ✅ Update user profile (name, phone, bloodGroup, avatar, district, upazila)
+    app.patch("/api/users/:email", verifyToken, async (req, res) => {
+      try {
+        const { email } = req.params;
+        const {
+          name,
+          phone,
+          bloodGroup,
+          avatarUrl,
+          address, // contains district & upazila
+        } = req.body;
+
+        // Authorization check
+        if (req.user.email !== email) {
+          return res
+            .status(403)
+            .json({ message: "Forbidden: Not your profile" });
+        }
+
+        // Prepare update object dynamically
+        const updateDoc = {
+          $set: {},
+        };
+
+        if (name) updateDoc.$set.name = name;
+        if (phone) updateDoc.$set.phone = phone;
+        if (bloodGroup) updateDoc.$set.bloodGroup = bloodGroup;
+        if (avatarUrl) updateDoc.$set.avatar = avatarUrl;
+        if (address) {
+          updateDoc.$set["address.district"] = address.district || "";
+          updateDoc.$set["address.upazila"] = address.upazila || "";
+        }
+
+        const result = await UsersCollection.updateOne({ email }, updateDoc);
+
+        if (result.matchedCount === 0) {
+          return res.status(404).json({ message: "User not found" });
+        }
+
+        const updatedUser = await UsersCollection.findOne({ email });
+        res.status(200).json({
+          message: "Profile updated successfully",
+          user: updatedUser,
+        });
+      } catch (error) {
+        console.error("Profile Update Error:", error);
+        res.status(500).json({
+          message: "Profile update failed",
+          error: error.message,
+        });
       }
     });
   } catch (error) {
