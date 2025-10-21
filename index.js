@@ -55,6 +55,7 @@ async function run() {
     const districtCollection = client.db("GeocodeDB").collection("Districts");
     const upazilaCollection = client.db("GeocodeDB").collection("Upazilas");
     const UsersCollection = client.db("UserDB").collection("Users");
+    const TaskCollection = client.db("TaskDB").collection("Tasks");
 
     // Route: Upload all upazila data
     app.post("/upload-upazilas", async (req, res) => {
@@ -307,6 +308,52 @@ async function run() {
         });
       }
     });
+    // Create a new service task
+app.post("/api/services", verifyToken, async (req, res) => {
+  try {
+    const {
+      serviceType,
+      description,
+      district,
+      upazila,
+      contact,
+      availability,
+    } = req.body;
+
+    // Fetch user info from DB
+    const user = await UsersCollection.findOne({ email: req.user.email });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const newTask = {
+      userId: user._id,
+      userName: user.name,
+      userAvatar: user.avatar || "", // automatically use user's avatar
+      serviceType,
+      description,
+      district: district || user.address?.district || "",
+      upazila: upazila || user.address?.upazila || "",
+      contact: contact || user.phone || "",
+      availability: availability || "",
+      createdAt: new Date(),
+      status: "pending", // default status
+    };
+
+    const result = await TaskCollection.insertOne(newTask);
+
+    res.status(201).json({
+      message: "Service task created successfully",
+      taskId: result.insertedId,
+      task: newTask,
+    });
+  } catch (error) {
+    console.error("Create Service Task Error:", error);
+    res.status(500).json({
+      message: "Failed to create service task",
+      error: error.message,
+    });
+  }
+});
+
   } catch (error) {
     console.error(" MongoDB connection failed:", error);
   }
