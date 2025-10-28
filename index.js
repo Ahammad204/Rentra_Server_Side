@@ -848,7 +848,7 @@ async function run() {
         .toArray();
       res.status(200).json(allRents);
     });
-        // Delete any service (admin only)
+    // Delete any service (admin only)
     app.delete("/api/rents/:id", verifyToken, async (req, res) => {
       try {
         const { id } = req.params;
@@ -866,9 +866,7 @@ async function run() {
           _id: new ObjectId(id),
         });
         if (!rentItems)
-          return res
-            .status(404)
-            .json({ message: "rentItems not found" });
+          return res.status(404).json({ message: "rentItems not found" });
 
         const result = await RentCollection.deleteOne({
           _id: new ObjectId(id),
@@ -882,6 +880,70 @@ async function run() {
           message: "Failed to delete service",
           error: error.message,
         });
+      }
+    });
+
+    // ------------------------- For All Users ------------------------------
+    // Get all tasks (services) for normal users
+    app.get("/api/tasks", async (req, res) => {
+      try {
+        const allTasks = await TaskCollection.find({ status: "pending" })
+          .sort({ createdAt: -1 })
+          .toArray();
+        res.status(200).json(allTasks);
+      } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Failed to fetch tasks", error });
+      }
+    });
+
+    // Get all service requests for normal users
+    app.get("/api/requests", async (req, res) => {
+      try {
+        const allRequests = await RequestCollection.find({ status: "pending" })
+          .sort({ createdAt: -1 })
+          .toArray();
+        res.status(200).json(allRequests);
+      } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Failed to fetch requests", error });
+      }
+    });
+
+    // Get all rent posts for normal users
+    app.get("/api/rents", async (req, res) => {
+      try {
+        const allRents = await RentCollection.find({ status: "available" })
+          .sort({ createdAt: -1 })
+          .toArray();
+        res.status(200).json(allRents);
+      } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Failed to fetch rents", error });
+      }
+    });
+    // Get a single task by ID
+    app.get("/api/tasks/:id", async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { ObjectId } = require("mongodb");
+
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).json({ message: "Invalid task ID" });
+        }
+
+        const task = await TaskCollection.findOne({ _id: new ObjectId(id) });
+
+        if (!task) {
+          return res.status(404).json({ message: "Task not found" });
+        }
+
+        res.status(200).json(task);
+      } catch (error) {
+        console.error("Fetch Task Error:", error);
+        res
+          .status(500)
+          .json({ message: "Failed to fetch task", error: error.message });
       }
     });
   } catch (error) {
