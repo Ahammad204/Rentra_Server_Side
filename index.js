@@ -56,6 +56,8 @@ async function run() {
     const upazilaCollection = client.db("GeocodeDB").collection("Upazilas");
     const UsersCollection = client.db("UserDB").collection("Users");
     const TaskCollection = client.db("TaskDB").collection("Tasks");
+    const RequestCollection = client.db("RequestDB").collection("Requests");
+    const RentCollection = client.db("RentDB").collection("Rents");
 
     // Route: Upload all upazila data
     app.post("/upload-upazilas", async (req, res) => {
@@ -256,7 +258,7 @@ async function run() {
       }
     });
 
-    // ✅ Update user profile (name, phone, bloodGroup, avatar, district, upazila)
+    //  Update user profile (name, phone, bloodGroup, avatar, district, upazila)
     app.patch("/api/users/:email", verifyToken, async (req, res) => {
       try {
         const { email } = req.params;
@@ -309,55 +311,368 @@ async function run() {
       }
     });
     // Create a new service task
-app.post("/api/services", verifyToken, async (req, res) => {
-  try {
-    const {
-      serviceType,
-      description,
-      district,
-      upazila,
-      contact,
-      availability,
-    } = req.body;
+    app.post("/api/services", verifyToken, async (req, res) => {
+      try {
+        const {
+          serviceType,
+          description,
+          district,
+          upazila,
+          contact,
+          availability,
+        } = req.body;
 
-    // Fetch user info from DB
+        // Fetch user info from DB
+        const user = await UsersCollection.findOne({ email: req.user.email });
+        if (!user) return res.status(404).json({ message: "User not found" });
+
+        const newTask = {
+          userId: user._id,
+          userName: user.name,
+          userAvatar: user.avatar || "", // automatically use user's avatar
+          serviceType,
+          description,
+          district: district || user.address?.district || "",
+          upazila: upazila || user.address?.upazila || "",
+          contact: contact || user.phone || "",
+          availability: availability || "",
+          createdAt: new Date(),
+          status: "pending", // default status
+        };
+
+        const result = await TaskCollection.insertOne(newTask);
+
+        res.status(201).json({
+          message: "Service task created successfully",
+          taskId: result.insertedId,
+          task: newTask,
+        });
+      } catch (error) {
+        console.error("Create Service Task Error:", error);
+        res.status(500).json({
+          message: "Failed to create service task",
+          error: error.message,
+        });
+      }
+    });
+    // Create a new service request
+    app.post("/api/requests", verifyToken, async (req, res) => {
+      try {
+        const {
+          requestTitle,
+          description,
+          district,
+          upazila,
+          contact,
+          urgency,
+        } = req.body;
+
+        // Fetch user info from DB
+        const user = await UsersCollection.findOne({ email: req.user.email });
+        if (!user) return res.status(404).json({ message: "User not found" });
+
+        const newRequest = {
+          userId: user._id,
+          userName: user.name,
+          userAvatar: user.avatar || "",
+          requestTitle,
+          description,
+          district: district || user.address?.district || "",
+          upazila: upazila || user.address?.upazila || "",
+          contact: contact || user.phone || "",
+          urgency: urgency || "",
+          createdAt: new Date(),
+          status: "pending",
+        };
+
+        const result = await RequestCollection.insertOne(newRequest);
+
+        res.status(201).json({
+          message: "Service request created successfully",
+          requestId: result.insertedId,
+          request: newRequest,
+        });
+      } catch (error) {
+        console.error("Create Service Request Error:", error);
+        res.status(500).json({
+          message: "Failed to create service request",
+          error: error.message,
+        });
+      }
+    });
+
+    // Create a new rent post
+    app.post("/api/rents", verifyToken, async (req, res) => {
+      try {
+        const {
+          itemName,
+          category,
+          description,
+          rentPrice,
+          district,
+          upazila,
+          contact,
+          availability,
+        } = req.body;
+
+        // Get user info from JWT
+        const user = await UsersCollection.findOne({ email: req.user.email });
+        if (!user) return res.status(404).json({ message: "User not found" });
+
+        // Create new rent post
+        const newRentPost = {
+          userId: user._id,
+          userName: user.name,
+          userAvatar: user.avatar || "",
+          itemName,
+          category,
+          description,
+          rentPrice: parseFloat(rentPrice),
+          district: district || user.address?.district || "",
+          upazila: upazila || user.address?.upazila || "",
+          contact: contact || user.phone || "",
+          availability: availability || "",
+          createdAt: new Date(),
+          status: "available", // default status
+        };
+
+        const result = await RentCollection.insertOne(newRentPost);
+
+        res.status(201).json({
+          message: "Rent post created successfully",
+          rentId: result.insertedId,
+          rentPost: newRentPost,
+        });
+      } catch (error) {
+        console.error("Create Rent Post Error:", error);
+        res.status(500).json({
+          message: "Failed to create rent post",
+          error: error.message,
+        });
+      }
+    });
+    // Get all services created by logged-in user
+    app.get("/api/my-services", verifyToken, async (req, res) => {
+      try {
+        const user = await UsersCollection.findOne({ email: req.user.email });
+        if (!user) return res.status(404).json({ message: "User not found" });
+         console.log(user)
+
+        const myServices = await TaskCollection.find({ userId: user._id })
+          .sort({ createdAt: -1 })
+          .toArray();
+        res.status(200).json(myServices);
+      } catch (error) {
+        console.error("Fetch My Services Error:", error);
+        res.status(500).json({
+          message: "Failed to fetch user services",
+          error: error.message,
+        });
+      }
+    });
+    // Update a service
+    app.patch("/api/services/:id", verifyToken, async (req, res) => {
+      try {
+        const { id } = req.params;
+        const updateData = req.body;
+        const { ObjectId } = require("mongodb");
+
+        // Check if the service belongs to the logged-in user
+        const service = await TaskCollection.findOne({ _id: new ObjectId(id) });
+        if (!service)
+          return res.status(404).json({ message: "Service not found" });
+
+        const user = await UsersCollection.findOne({ email: req.user.email });
+        if (!user || service.userId.toString() !== user._id.toString()) {
+          return res
+            .status(403)
+            .json({
+              message: "Forbidden: You can only update your own service",
+            });
+        }
+
+        const result = await TaskCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: { ...updateData, updatedAt: new Date() } }
+        );
+
+        res
+          .status(200)
+          .json({ message: "Service updated successfully", result });
+      } catch (error) {
+        console.error("Update Service Error:", error);
+        res.status(500).json({
+          message: "Failed to update service",
+          error: error.message,
+        });
+      }
+    });
+    // Delete a service
+    app.delete("/api/services/:id", verifyToken, async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { ObjectId } = require("mongodb");
+
+        const service = await TaskCollection.findOne({ _id: new ObjectId(id) });
+        if (!service)
+          return res.status(404).json({ message: "Service not found" });
+
+        const user = await UsersCollection.findOne({ email: req.user.email });
+        if (!user || service.userId.toString() !== user._id.toString()) {
+          return res
+            .status(403)
+            .json({
+              message: "Forbidden: You can only delete your own service",
+            });
+        }
+
+        const result = await TaskCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+        res
+          .status(200)
+          .json({ message: "Service deleted successfully", result });
+      } catch (error) {
+        console.error("Delete Service Error:", error);
+        res.status(500).json({
+          message: "Failed to delete service",
+          error: error.message,
+        });
+      }
+    });
+    //  Get all requests by logged-in user
+    app.get("/api/my-requests", verifyToken, async (req, res) => {
+      try {
+        const user = await UsersCollection.findOne({ email: req.user.email });
+        if (!user) return res.status(404).json({ message: "User not found" });
+
+        const myServicesRequest = await RequestCollection.find({
+          userId: user._id,
+        })
+          .sort({ createdAt: -1 })
+          .toArray();
+        res.status(200).json(myServicesRequest);
+      } catch (error) {
+        console.error("Fetch My Services Error:", error);
+        res.status(500).json({
+          message: "Failed to fetch user services",
+          error: error.message,
+        });
+      }
+    });
+
+    //  Delete a request
+    app.delete("/api/requests/:id", verifyToken, async (req, res) => {
+      const { ObjectId } = require("mongodb");
+      const id = req.params.id;
+      await RequestCollection.deleteOne({ _id: new ObjectId(id) });
+      res.status(200).json({ message: "Deleted successfully" });
+    });
+
+    // Edit (update) a request
+    app.patch("/api/requests/:id", verifyToken, async (req, res) => {
+      const { ObjectId } = require("mongodb");
+      const id = req.params.id;
+      const updateData = req.body;
+      await RequestCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: updateData }
+      );
+      res.status(200).json({ message: "Updated successfully" });
+    });
+    // ===================== RENT MANAGEMENT ROUTES =====================
+
+// 🔹 Get all rent posts created by logged-in user
+app.get("/api/my-rents", verifyToken, async (req, res) => {
+  try {
     const user = await UsersCollection.findOne({ email: req.user.email });
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    const newTask = {
-      userId: user._id,
-      userName: user.name,
-      userAvatar: user.avatar || "", // automatically use user's avatar
-      serviceType,
-      description,
-      district: district || user.address?.district || "",
-      upazila: upazila || user.address?.upazila || "",
-      contact: contact || user.phone || "",
-      availability: availability || "",
-      createdAt: new Date(),
-      status: "pending", // default status
-    };
+    const myRents = await RentCollection.find({ userId: user._id })
+      .sort({ createdAt: -1 })
+      .toArray();
 
-    const result = await TaskCollection.insertOne(newTask);
-
-    res.status(201).json({
-      message: "Service task created successfully",
-      taskId: result.insertedId,
-      task: newTask,
-    });
+    res.status(200).json(myRents);
   } catch (error) {
-    console.error("Create Service Task Error:", error);
+    console.error("Fetch My Rents Error:", error);
     res.status(500).json({
-      message: "Failed to create service task",
+      message: "Failed to fetch user rents",
       error: error.message,
     });
   }
 });
 
+// 🔹 Update rent post (edit)
+app.patch("/api/rents/:id", verifyToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+    const { ObjectId } = require("mongodb");
+
+    // Fetch rent by id
+    const rent = await RentCollection.findOne({ _id: new ObjectId(id) });
+    if (!rent) return res.status(404).json({ message: "Rent not found" });
+
+    // Ensure user owns this rent post
+    const user = await UsersCollection.findOne({ email: req.user.email });
+    if (!user || rent.userId.toString() !== user._id.toString()) {
+      return res
+        .status(403)
+        .json({ message: "Forbidden: You can only edit your own rent post" });
+    }
+
+    // Remove _id if it accidentally exists in updateData (to prevent immutable field error)
+    delete updateData._id;
+
+    // Update rent post
+    const result = await RentCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { ...updateData, updatedAt: new Date() } }
+    );
+
+    res.status(200).json({ message: "Rent post updated successfully", result });
+  } catch (error) {
+    console.error("Update Rent Error:", error);
+    res.status(500).json({
+      message: "Failed to update rent post",
+      error: error.message,
+    });
+  }
+});
+
+// 🔹 Delete rent post
+app.delete("/api/rents/:id", verifyToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { ObjectId } = require("mongodb");
+
+    const rent = await RentCollection.findOne({ _id: new ObjectId(id) });
+    if (!rent) return res.status(404).json({ message: "Rent not found" });
+
+    const user = await UsersCollection.findOne({ email: req.user.email });
+    if (!user || rent.userId.toString() !== user._id.toString()) {
+      return res
+        .status(403)
+        .json({ message: "Forbidden: You can only delete your own rent post" });
+    }
+
+    const result = await RentCollection.deleteOne({ _id: new ObjectId(id) });
+    res.status(200).json({ message: "Rent post deleted successfully", result });
+  } catch (error) {
+    console.error("Delete Rent Error:", error);
+    res.status(500).json({
+      message: "Failed to delete rent post",
+      error: error.message,
+    });
+  }
+});
+
+  
   } catch (error) {
     console.error(" MongoDB connection failed:", error);
   }
 }
+
 
 run().catch(console.dir);
 
