@@ -161,7 +161,7 @@ async function run() {
           phone,
           password: hashedPassword,
           avatar: avatarUrl,
-          roles: roles || ["user"],
+          roles: roles || "user",
           bloodGroup,
           status: status || "active",
           ratingAvg: ratingAvg || 0,
@@ -456,7 +456,7 @@ async function run() {
       try {
         const user = await UsersCollection.findOne({ email: req.user.email });
         if (!user) return res.status(404).json({ message: "User not found" });
-         console.log(user)
+        console.log(user);
 
         const myServices = await TaskCollection.find({ userId: user._id })
           .sort({ createdAt: -1 })
@@ -484,11 +484,9 @@ async function run() {
 
         const user = await UsersCollection.findOne({ email: req.user.email });
         if (!user || service.userId.toString() !== user._id.toString()) {
-          return res
-            .status(403)
-            .json({
-              message: "Forbidden: You can only update your own service",
-            });
+          return res.status(403).json({
+            message: "Forbidden: You can only update your own service",
+          });
         }
 
         const result = await TaskCollection.updateOne(
@@ -519,11 +517,9 @@ async function run() {
 
         const user = await UsersCollection.findOne({ email: req.user.email });
         if (!user || service.userId.toString() !== user._id.toString()) {
-          return res
-            .status(403)
-            .json({
-              message: "Forbidden: You can only delete your own service",
-            });
+          return res.status(403).json({
+            message: "Forbidden: You can only delete your own service",
+          });
         }
 
         const result = await TaskCollection.deleteOne({
@@ -582,97 +578,163 @@ async function run() {
     });
     // ===================== RENT MANAGEMENT ROUTES =====================
 
-// 🔹 Get all rent posts created by logged-in user
-app.get("/api/my-rents", verifyToken, async (req, res) => {
-  try {
-    const user = await UsersCollection.findOne({ email: req.user.email });
-    if (!user) return res.status(404).json({ message: "User not found" });
+    // 🔹 Get all rent posts created by logged-in user
+    app.get("/api/my-rents", verifyToken, async (req, res) => {
+      try {
+        const user = await UsersCollection.findOne({ email: req.user.email });
+        if (!user) return res.status(404).json({ message: "User not found" });
 
-    const myRents = await RentCollection.find({ userId: user._id })
-      .sort({ createdAt: -1 })
-      .toArray();
+        const myRents = await RentCollection.find({ userId: user._id })
+          .sort({ createdAt: -1 })
+          .toArray();
 
-    res.status(200).json(myRents);
-  } catch (error) {
-    console.error("Fetch My Rents Error:", error);
-    res.status(500).json({
-      message: "Failed to fetch user rents",
-      error: error.message,
+        res.status(200).json(myRents);
+      } catch (error) {
+        console.error("Fetch My Rents Error:", error);
+        res.status(500).json({
+          message: "Failed to fetch user rents",
+          error: error.message,
+        });
+      }
     });
-  }
-});
 
-// 🔹 Update rent post (edit)
-app.patch("/api/rents/:id", verifyToken, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const updateData = req.body;
-    const { ObjectId } = require("mongodb");
+    // 🔹 Update rent post (edit)
+    app.patch("/api/rents/:id", verifyToken, async (req, res) => {
+      try {
+        const { id } = req.params;
+        const updateData = req.body;
+        const { ObjectId } = require("mongodb");
 
-    // Fetch rent by id
-    const rent = await RentCollection.findOne({ _id: new ObjectId(id) });
-    if (!rent) return res.status(404).json({ message: "Rent not found" });
+        // Fetch rent by id
+        const rent = await RentCollection.findOne({ _id: new ObjectId(id) });
+        if (!rent) return res.status(404).json({ message: "Rent not found" });
 
-    // Ensure user owns this rent post
-    const user = await UsersCollection.findOne({ email: req.user.email });
-    if (!user || rent.userId.toString() !== user._id.toString()) {
-      return res
-        .status(403)
-        .json({ message: "Forbidden: You can only edit your own rent post" });
-    }
+        // Ensure user owns this rent post
+        const user = await UsersCollection.findOne({ email: req.user.email });
+        if (!user || rent.userId.toString() !== user._id.toString()) {
+          return res.status(403).json({
+            message: "Forbidden: You can only edit your own rent post",
+          });
+        }
 
-    // Remove _id if it accidentally exists in updateData (to prevent immutable field error)
-    delete updateData._id;
+        // Remove _id if it accidentally exists in updateData (to prevent immutable field error)
+        delete updateData._id;
 
-    // Update rent post
-    const result = await RentCollection.updateOne(
-      { _id: new ObjectId(id) },
-      { $set: { ...updateData, updatedAt: new Date() } }
-    );
+        // Update rent post
+        const result = await RentCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: { ...updateData, updatedAt: new Date() } }
+        );
 
-    res.status(200).json({ message: "Rent post updated successfully", result });
-  } catch (error) {
-    console.error("Update Rent Error:", error);
-    res.status(500).json({
-      message: "Failed to update rent post",
-      error: error.message,
+        res
+          .status(200)
+          .json({ message: "Rent post updated successfully", result });
+      } catch (error) {
+        console.error("Update Rent Error:", error);
+        res.status(500).json({
+          message: "Failed to update rent post",
+          error: error.message,
+        });
+      }
     });
-  }
-});
 
-// 🔹 Delete rent post
-app.delete("/api/rents/:id", verifyToken, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { ObjectId } = require("mongodb");
+    //  Delete rent post
+    app.delete("/api/rents/:id", verifyToken, async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { ObjectId } = require("mongodb");
 
-    const rent = await RentCollection.findOne({ _id: new ObjectId(id) });
-    if (!rent) return res.status(404).json({ message: "Rent not found" });
+        const rent = await RentCollection.findOne({ _id: new ObjectId(id) });
+        if (!rent) return res.status(404).json({ message: "Rent not found" });
 
-    const user = await UsersCollection.findOne({ email: req.user.email });
-    if (!user || rent.userId.toString() !== user._id.toString()) {
-      return res
-        .status(403)
-        .json({ message: "Forbidden: You can only delete your own rent post" });
-    }
+        const user = await UsersCollection.findOne({ email: req.user.email });
+        if (!user || rent.userId.toString() !== user._id.toString()) {
+          return res.status(403).json({
+            message: "Forbidden: You can only delete your own rent post",
+          });
+        }
 
-    const result = await RentCollection.deleteOne({ _id: new ObjectId(id) });
-    res.status(200).json({ message: "Rent post deleted successfully", result });
-  } catch (error) {
-    console.error("Delete Rent Error:", error);
-    res.status(500).json({
-      message: "Failed to delete rent post",
-      error: error.message,
+        const result = await RentCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+        res
+          .status(200)
+          .json({ message: "Rent post deleted successfully", result });
+      } catch (error) {
+        console.error("Delete Rent Error:", error);
+        res.status(500).json({
+          message: "Failed to delete rent post",
+          error: error.message,
+        });
+      }
     });
-  }
-});
 
-  
+    //Check admin or not
+    app.get("/users/admin/:email", verifyToken, async (req, res) => {
+      const email = req.params.email;
+      const user = await UsersCollection.findOne({ email });
+
+      res.send({ isAdmin: user?.roles === "admin" });
+    });
+    // ===================== ADMIN USER MANAGEMENT =====================
+
+    //  Get all users (admin only)
+    app.get("/api/users", verifyToken, async (req, res) => {
+      try {
+        const requester = await UsersCollection.findOne({
+          email: req.user.email,
+        });
+        if (!requester || requester.roles !== "admin") {
+          return res.status(403).json({ message: "Forbidden: Admins only" });
+        }
+
+        const users = await UsersCollection.find()
+          .sort({ createdAt: -1 })
+          .toArray();
+        res.status(200).json(users);
+      } catch (error) {
+        console.error("Fetch Users Error:", error);
+        res
+          .status(500)
+          .json({ message: "Failed to fetch users", error: error.message });
+      }
+    });
+
+    //  Update user role or status (admin only)
+    app.patch("/api/users/:id", verifyToken, async (req, res) => {
+      try {
+        const requester = await UsersCollection.findOne({
+          email: req.user.email,
+        });
+        if (!requester || requester.roles !== "admin") {
+          return res.status(403).json({ message: "Forbidden: Admins only" });
+        }
+
+        const { id } = req.params;
+        const { ObjectId } = require("mongodb");
+        const { roles, status } = req.body;
+
+        const updateDoc = { $set: {} };
+        if (roles) updateDoc.$set.roles = roles;
+        if (status) updateDoc.$set.status = status;
+
+        const result = await UsersCollection.updateOne(
+          { _id: new ObjectId(id) },
+          updateDoc
+        );
+
+        res.status(200).json({ message: "User updated successfully", result });
+      } catch (error) {
+        console.error("Update User Error:", error);
+        res
+          .status(500)
+          .json({ message: "Failed to update user", error: error.message });
+      }
+    });
   } catch (error) {
     console.error(" MongoDB connection failed:", error);
   }
 }
-
 
 run().catch(console.dir);
 
