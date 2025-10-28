@@ -798,9 +798,13 @@ async function run() {
           return res.status(403).json({ message: "Forbidden: Admins only" });
         }
 
-        const serviceRequest = await RequestCollection.findOne({ _id: new ObjectId(id) });
+        const serviceRequest = await RequestCollection.findOne({
+          _id: new ObjectId(id),
+        });
         if (!serviceRequest)
-          return res.status(404).json({ message: "Request Collection not found" });
+          return res
+            .status(404)
+            .json({ message: "Request Collection not found" });
 
         const result = await RequestCollection.deleteOne({
           _id: new ObjectId(id),
@@ -829,6 +833,56 @@ async function run() {
         .sort({ createdAt: -1 })
         .toArray();
       res.status(200).json(allRequests);
+    });
+    // Admin: Get all rent posts
+    app.get("/api/rents/admin", verifyToken, async (req, res) => {
+      const requester = await UsersCollection.findOne({
+        email: req.user.email,
+      });
+      if (!requester || requester.roles !== "admin") {
+        return res.status(403).json({ message: "Forbidden: Admins only" });
+      }
+
+      const allRents = await RentCollection.find()
+        .sort({ createdAt: -1 })
+        .toArray();
+      res.status(200).json(allRents);
+    });
+        // Delete any service (admin only)
+    app.delete("/api/rents/:id", verifyToken, async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { ObjectId } = require("mongodb");
+
+        // Check if requester is admin
+        const requester = await UsersCollection.findOne({
+          email: req.user.email,
+        });
+        if (!requester || requester.roles !== "admin") {
+          return res.status(403).json({ message: "Forbidden: Admins only" });
+        }
+
+        const rentItems = await RentCollection.findOne({
+          _id: new ObjectId(id),
+        });
+        if (!rentItems)
+          return res
+            .status(404)
+            .json({ message: "rentItems not found" });
+
+        const result = await RentCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+        res
+          .status(200)
+          .json({ message: "rentItems deleted successfully", result });
+      } catch (error) {
+        console.error("Admin Delete Service Error:", error);
+        res.status(500).json({
+          message: "Failed to delete service",
+          error: error.message,
+        });
+      }
     });
   } catch (error) {
     console.error(" MongoDB connection failed:", error);
