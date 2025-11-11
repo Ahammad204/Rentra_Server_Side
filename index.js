@@ -7,6 +7,12 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 
 // Middleware
+// app.use(
+//   cors({
+//     origin: ["https://rentraa.netlify.app"],
+//     credentials: true,
+//   })
+// );
 app.use(
   cors({
     origin: ["http://localhost:5173"],
@@ -48,8 +54,8 @@ const verifyToken = (req, res, next) => {
 
 async function run() {
   try {
-    await client.connect();
-    await client.db("admin").command({ ping: 1 });
+    // await client.connect();
+    // await client.db("admin").command({ ping: 1 });
     console.log(" Connected to MongoDB");
 
     const districtCollection = client.db("GeocodeDB").collection("Districts");
@@ -58,6 +64,212 @@ async function run() {
     const TaskCollection = client.db("TaskDB").collection("Tasks");
     const RequestCollection = client.db("RequestDB").collection("Requests");
     const RentCollection = client.db("RentDB").collection("Rents");
+// ===================== ADMIN MANAGEMENT =====================
+
+    //  Get all users (admin only)
+    app.get("/api/users", verifyToken, async (req, res) => {
+      try {
+        const requester = await UsersCollection.findOne({
+          email: req.user.email,
+        });
+        if (!requester || requester.roles !== "admin") {
+          return res.status(403).json({ message: "Forbidden: Admins only" });
+        }
+
+        const users = await UsersCollection.find()
+          .sort({ createdAt: -1 })
+          .toArray();
+        res.status(200).json(users);
+      } catch (error) {
+        console.error("Fetch Users Error:", error);
+        res
+          .status(500)
+          .json({ message: "Failed to fetch users", error: error.message });
+      }
+    });
+
+    //  Update user role or status (admin only)
+    app.patch("/api/users/:id", verifyToken, async (req, res) => {
+      try {
+        const requester = await UsersCollection.findOne({
+          email: req.user.email,
+        });
+        if (!requester || requester.roles !== "admin") {
+          return res.status(403).json({ message: "Forbidden: Admins only" });
+        }
+
+        const { id } = req.params;
+        const { ObjectId } = require("mongodb");
+        const { roles, status } = req.body;
+
+        const updateDoc = { $set: {} };
+        if (roles) updateDoc.$set.roles = roles;
+        if (status) updateDoc.$set.status = status;
+
+        const result = await UsersCollection.updateOne(
+          { _id: new ObjectId(id) },
+          updateDoc
+        );
+
+        res.status(200).json({ message: "User updated successfully", result });
+      } catch (error) {
+        console.error("Update User Error:", error);
+        res
+          .status(500)
+          .json({ message: "Failed to update user", error: error.message });
+      }
+    });
+    // Get all services (for everyone)
+    app.get("/api/services", verifyToken, async (req, res) => {
+      try {
+        const requester = await UsersCollection.findOne({
+          email: req.user.email,
+        });
+        if (!requester || requester.roles !== "admin") {
+          return res.status(403).json({ message: "Forbidden: Admins only" });
+        }
+        const allServices = await TaskCollection.find()
+          .sort({ createdAt: -1 })
+          .toArray();
+        res.status(200).json(allServices);
+      } catch (error) {
+        console.error("Fetch All Services Error:", error);
+        res.status(500).json({
+          message: "Failed to fetch all services",
+          error: error.message,
+        });
+      }
+    });
+    // Delete any service (admin only)
+    app.delete("/api/services/admin/:id", verifyToken, async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { ObjectId } = require("mongodb");
+
+        // Check if requester is admin
+        const requester = await UsersCollection.findOne({
+          email: req.user.email,
+        });
+        if (!requester || requester.roles !== "admin") {
+          return res.status(403).json({ message: "Forbidden: Admins only" });
+        }
+
+        const service = await TaskCollection.findOne({ _id: new ObjectId(id) });
+        if (!service)
+          return res.status(404).json({ message: "Service not found" });
+
+        const result = await TaskCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+        res
+          .status(200)
+          .json({ message: "Service deleted successfully", result });
+      } catch (error) {
+        console.error("Admin Delete Service Error:", error);
+        res.status(500).json({
+          message: "Failed to delete service",
+          error: error.message,
+        });
+      }
+    });
+    // Delete any service (admin only)
+    app.delete("/api/requests/:id", verifyToken, async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { ObjectId } = require("mongodb");
+
+        // Check if requester is admin
+        const requester = await UsersCollection.findOne({
+          email: req.user.email,
+        });
+        if (!requester || requester.roles !== "admin") {
+          return res.status(403).json({ message: "Forbidden: Admins only" });
+        }
+
+        const serviceRequest = await RequestCollection.findOne({
+          _id: new ObjectId(id),
+        });
+        if (!serviceRequest)
+          return res
+            .status(404)
+            .json({ message: "Request Collection not found" });
+
+        const result = await RequestCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+        res
+          .status(200)
+          .json({ message: "Request collection deleted successfully", result });
+      } catch (error) {
+        console.error("Admin Delete Service Error:", error);
+        res.status(500).json({
+          message: "Failed to delete service",
+          error: error.message,
+        });
+      }
+    });
+    // Admin: Get all requests
+    app.get("/api/requests/admin", verifyToken, async (req, res) => {
+      const requester = await UsersCollection.findOne({
+        email: req.user.email,
+      });
+      if (!requester || requester.roles !== "admin") {
+        return res.status(403).json({ message: "Forbidden: Admins only" });
+      }
+
+      const allRequests = await RequestCollection.find()
+        .sort({ createdAt: -1 })
+        .toArray();
+      res.status(200).json(allRequests);
+    });
+    // Admin: Get all rent posts
+    app.get("/api/rents/admin", verifyToken, async (req, res) => {
+      const requester = await UsersCollection.findOne({
+        email: req.user.email,
+      });
+      if (!requester || requester.roles !== "admin") {
+        return res.status(403).json({ message: "Forbidden: Admins only" });
+      }
+
+      const allRents = await RentCollection.find()
+        .sort({ createdAt: -1 })
+        .toArray();
+      res.status(200).json(allRents);
+    });
+    // Delete any service (admin only)
+    app.delete("/api/rents/:id", verifyToken, async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { ObjectId } = require("mongodb");
+
+        // Check if requester is admin
+        const requester = await UsersCollection.findOne({
+          email: req.user.email,
+        });
+        if (!requester || requester.roles !== "admin") {
+          return res.status(403).json({ message: "Forbidden: Admins only" });
+        }
+
+        const rentItems = await RentCollection.findOne({
+          _id: new ObjectId(id),
+        });
+        if (!rentItems)
+          return res.status(404).json({ message: "rentItems not found" });
+
+        const result = await RentCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+        res
+          .status(200)
+          .json({ message: "rentItems deleted successfully", result });
+      } catch (error) {
+        console.error("Admin Delete Service Error:", error);
+        res.status(500).json({
+          message: "Failed to delete service",
+          error: error.message,
+        });
+      }
+    });
 
     // Route: Upload all upazila data
     app.post("/upload-upazilas", async (req, res) => {
@@ -637,6 +849,26 @@ async function run() {
         });
       }
     });
+    // 🔹 Get single rent post by ID (for everyone)
+    app.get("/api/rents/:id", async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { ObjectId } = require("mongodb");
+
+        const rent = await RentCollection.findOne({ _id: new ObjectId(id) });
+        if (!rent) {
+          return res.status(404).json({ message: "Rent item not found" });
+        }
+
+        res.status(200).json(rent);
+      } catch (error) {
+        console.error("Fetch Single Rent Error:", error);
+        res.status(500).json({
+          message: "Failed to fetch rent item",
+          error: error.message,
+        });
+      }
+    });
 
     //  Delete rent post
     app.delete("/api/rents/:id", verifyToken, async (req, res) => {
@@ -676,213 +908,7 @@ async function run() {
 
       res.send({ isAdmin: user?.roles === "admin" });
     });
-    // ===================== ADMIN USER MANAGEMENT =====================
-
-    //  Get all users (admin only)
-    app.get("/api/users", verifyToken, async (req, res) => {
-      try {
-        const requester = await UsersCollection.findOne({
-          email: req.user.email,
-        });
-        if (!requester || requester.roles !== "admin") {
-          return res.status(403).json({ message: "Forbidden: Admins only" });
-        }
-
-        const users = await UsersCollection.find()
-          .sort({ createdAt: -1 })
-          .toArray();
-        res.status(200).json(users);
-      } catch (error) {
-        console.error("Fetch Users Error:", error);
-        res
-          .status(500)
-          .json({ message: "Failed to fetch users", error: error.message });
-      }
-    });
-
-    //  Update user role or status (admin only)
-    app.patch("/api/users/:id", verifyToken, async (req, res) => {
-      try {
-        const requester = await UsersCollection.findOne({
-          email: req.user.email,
-        });
-        if (!requester || requester.roles !== "admin") {
-          return res.status(403).json({ message: "Forbidden: Admins only" });
-        }
-
-        const { id } = req.params;
-        const { ObjectId } = require("mongodb");
-        const { roles, status } = req.body;
-
-        const updateDoc = { $set: {} };
-        if (roles) updateDoc.$set.roles = roles;
-        if (status) updateDoc.$set.status = status;
-
-        const result = await UsersCollection.updateOne(
-          { _id: new ObjectId(id) },
-          updateDoc
-        );
-
-        res.status(200).json({ message: "User updated successfully", result });
-      } catch (error) {
-        console.error("Update User Error:", error);
-        res
-          .status(500)
-          .json({ message: "Failed to update user", error: error.message });
-      }
-    });
-    // Get all services (for everyone)
-    app.get("/api/services", verifyToken, async (req, res) => {
-      try {
-        const requester = await UsersCollection.findOne({
-          email: req.user.email,
-        });
-        if (!requester || requester.roles !== "admin") {
-          return res.status(403).json({ message: "Forbidden: Admins only" });
-        }
-        const allServices = await TaskCollection.find()
-          .sort({ createdAt: -1 })
-          .toArray();
-        res.status(200).json(allServices);
-      } catch (error) {
-        console.error("Fetch All Services Error:", error);
-        res.status(500).json({
-          message: "Failed to fetch all services",
-          error: error.message,
-        });
-      }
-    });
-    // Delete any service (admin only)
-    app.delete("/api/services/admin/:id", verifyToken, async (req, res) => {
-      try {
-        const { id } = req.params;
-        const { ObjectId } = require("mongodb");
-
-        // Check if requester is admin
-        const requester = await UsersCollection.findOne({
-          email: req.user.email,
-        });
-        if (!requester || requester.roles !== "admin") {
-          return res.status(403).json({ message: "Forbidden: Admins only" });
-        }
-
-        const service = await TaskCollection.findOne({ _id: new ObjectId(id) });
-        if (!service)
-          return res.status(404).json({ message: "Service not found" });
-
-        const result = await TaskCollection.deleteOne({
-          _id: new ObjectId(id),
-        });
-        res
-          .status(200)
-          .json({ message: "Service deleted successfully", result });
-      } catch (error) {
-        console.error("Admin Delete Service Error:", error);
-        res.status(500).json({
-          message: "Failed to delete service",
-          error: error.message,
-        });
-      }
-    });
-    // Delete any service (admin only)
-    app.delete("/api/requests/:id", verifyToken, async (req, res) => {
-      try {
-        const { id } = req.params;
-        const { ObjectId } = require("mongodb");
-
-        // Check if requester is admin
-        const requester = await UsersCollection.findOne({
-          email: req.user.email,
-        });
-        if (!requester || requester.roles !== "admin") {
-          return res.status(403).json({ message: "Forbidden: Admins only" });
-        }
-
-        const serviceRequest = await RequestCollection.findOne({
-          _id: new ObjectId(id),
-        });
-        if (!serviceRequest)
-          return res
-            .status(404)
-            .json({ message: "Request Collection not found" });
-
-        const result = await RequestCollection.deleteOne({
-          _id: new ObjectId(id),
-        });
-        res
-          .status(200)
-          .json({ message: "Request collection deleted successfully", result });
-      } catch (error) {
-        console.error("Admin Delete Service Error:", error);
-        res.status(500).json({
-          message: "Failed to delete service",
-          error: error.message,
-        });
-      }
-    });
-    // Admin: Get all requests
-    app.get("/api/requests/admin", verifyToken, async (req, res) => {
-      const requester = await UsersCollection.findOne({
-        email: req.user.email,
-      });
-      if (!requester || requester.roles !== "admin") {
-        return res.status(403).json({ message: "Forbidden: Admins only" });
-      }
-
-      const allRequests = await RequestCollection.find()
-        .sort({ createdAt: -1 })
-        .toArray();
-      res.status(200).json(allRequests);
-    });
-    // Admin: Get all rent posts
-    app.get("/api/rents/admin", verifyToken, async (req, res) => {
-      const requester = await UsersCollection.findOne({
-        email: req.user.email,
-      });
-      if (!requester || requester.roles !== "admin") {
-        return res.status(403).json({ message: "Forbidden: Admins only" });
-      }
-
-      const allRents = await RentCollection.find()
-        .sort({ createdAt: -1 })
-        .toArray();
-      res.status(200).json(allRents);
-    });
-    // Delete any service (admin only)
-    app.delete("/api/rents/:id", verifyToken, async (req, res) => {
-      try {
-        const { id } = req.params;
-        const { ObjectId } = require("mongodb");
-
-        // Check if requester is admin
-        const requester = await UsersCollection.findOne({
-          email: req.user.email,
-        });
-        if (!requester || requester.roles !== "admin") {
-          return res.status(403).json({ message: "Forbidden: Admins only" });
-        }
-
-        const rentItems = await RentCollection.findOne({
-          _id: new ObjectId(id),
-        });
-        if (!rentItems)
-          return res.status(404).json({ message: "rentItems not found" });
-
-        const result = await RentCollection.deleteOne({
-          _id: new ObjectId(id),
-        });
-        res
-          .status(200)
-          .json({ message: "rentItems deleted successfully", result });
-      } catch (error) {
-        console.error("Admin Delete Service Error:", error);
-        res.status(500).json({
-          message: "Failed to delete service",
-          error: error.message,
-        });
-      }
-    });
-
+    
     // ------------------------- For All Users ------------------------------
     // Get all tasks (services) for normal users
     app.get("/api/tasks", async (req, res) => {
@@ -944,6 +970,32 @@ async function run() {
         res
           .status(500)
           .json({ message: "Failed to fetch task", error: error.message });
+      }
+    });
+    // Get a single Request by ID
+    app.get("/api/requests/:id", async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { ObjectId } = require("mongodb");
+
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).json({ message: "Invalid requests ID" });
+        }
+
+        const request = await RequestCollection.findOne({
+          _id: new ObjectId(id),
+        });
+
+        if (!request) {
+          return res.status(404).json({ message: "requests not found" });
+        }
+
+        res.status(200).json(request);
+      } catch (error) {
+        console.error("Fetch requests Error:", error);
+        res
+          .status(500)
+          .json({ message: "Failed to fetch requests", error: error.message });
       }
     });
   } catch (error) {
